@@ -1,0 +1,46 @@
+# Copy this file to accounts.yaml and fill in your real accounts.
+# accounts.yaml is gitignored -- it is personal data, keep it local.
+#
+# roles is a free-form list of tags used only for reporting/filtering, e.g.:
+#   active_gmail   - the Gmail address you actively use today
+#   latest_photos  - where new photos currently land
+#   yt_music       - the account you use for YouTube Music uploads
+#   photos         - account holds a Google Photos library
+#   music_in_drive - account is known/suspected to store music files in Drive
+#
+# free_photo_ranges: date ranges (inclusive start, exclusive end, ISO dates)
+# whose photos are NOT charged against quota (e.g. a legacy unlimited-storage
+# deal). Items in these ranges should never be proposed for deletion/move by
+# the dedup/cleanup scripts -- they are already "free" where they are.
+#
+# client_secret_file: path to the OAuth "Desktop app" client secret JSON you
+# downloaded from Google Cloud Console. The same client secret file can be
+# reused for every account -- only the per-account token differs.
+
+client_secret_file: "config/client_secret.json"
+
+accounts:
+  - label: main
+    email: "your.active.address@gmail.com"
+    notes: >
+      Active Gmail account. Photos from 2014-2021 are free (legacy deal),
+      photos from Dec 2025 onwards are the current, actively-filling library.
+      Also used for YouTube Music uploads.
+    roles: [active_gmail, latest_photos, yt_music, photos]
+    free_photo_ranges:
+      - start: "2014-01-01"
+        end: "2021-06-01"
+
+  - label: acct2
+    email: "second.address@gmail.com"
+    notes: "Secondary account, has a Photos library."
+    roles: [photos]
+    free_photo_ranges: []
+
+  - label: acct3
+    email: "third.address@gmail.com"
+    notes: "Suspected to hold music files uploaded to Drive."
+    roles: [music_in_drive]
+    free_photo_ranges: []
+
+  # ... add the rest of your ~8 accounts here.

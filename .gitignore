@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Personal, sensitive config -- never commit these.
+config/accounts.yaml
+config/client_secret.json
+tokens/
+data/
+*.token.json
+
+# Misc
+.DS_Store
