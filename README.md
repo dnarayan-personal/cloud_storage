@@ -80,9 +80,21 @@ For each account this prints:
   against quota), read from `data/inventory/<label>_photos.json` -- see
   "Google Photos inventory" below for how to build that file. If no
   inventory exists yet for an account, this section is skipped.
-- A combined total usage/limit across all reported accounts.
+- A combined total usage/limit/remaining, plus summed Photos counts, across
+  all reported accounts.
 
-This script only reads data. It makes no changes to any account.
+This script only reads data. It makes no changes to any account. On every
+run it also saves a full JSON dump of everything above -- per-account
+quota/remaining, the Drive-by-category breakdown, and Photos summary, plus
+combined totals -- to `data/reports/usage_report.json`, for later analysis
+or graphing.
+
+`scripts/visualize_usage.py` reads that JSON and renders a stacked
+horizontal bar chart (one bar per account, split by Drive file category plus
+an "outside Drive (Gmail+Photos)" segment) to
+`data/reports/usage_by_type.png`. Note that Photos items have no known byte
+size (see limitations below), so Photos usage can't be split out from Gmail
+in this chart -- it's shown as one combined segment.
 
 ### Known API limitations (read before trusting exact numbers)
 
@@ -141,6 +153,8 @@ config/
 scripts/
   authorize_account.py    # one-time Drive/Photos-readonly OAuth consent per account
   usage_report.py         # cross-account usage report (read-only)
+  visualize_usage.py      # renders data/reports/usage_report.json as a
+                           # stacked bar chart (data/reports/usage_by_type.png)
   photos_inventory.py     # year-by-year Google Photos inventory via the Picker API
                            # (metadata only; requires a browser per year -- see below)
   ytmusic_inventory.py    # YT Music uploaded-songs inventory via ytmusicapi
