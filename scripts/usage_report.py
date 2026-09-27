@@ -7,8 +7,12 @@ For every account in config/accounts.yaml, reports:
     limitation note in README.md)
   - Drive file inventory bucketed by type (image/video/audio/other), flagging
     unexpected photos/videos sitting in Drive instead of Photos
-  - Google Photos item counts (photo vs video) and creation-date span,
-    including how many photos fall inside a configured "free" date range
+  - Google Photos item counts, split into "free" (falls inside a configured
+    free_photo_range) vs "charged", read from
+    data/inventory/<label>_photos.json if present (built via
+    scripts/photos_inventory.py -- the Photos Library API can no longer list
+    a user's whole library, and no API exposes a Photos-only byte figure;
+    see README)
 
 This script only reads data -- it makes no changes to any account.
 
@@ -20,7 +24,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import json
 import sys
+from pathlib import Path
 
 from googleapiclient.errors import HttpError
 from tabulate import tabulate
@@ -33,13 +39,47 @@ from cloud_storage_tools.driveutil import (
     summarize_files_by_category,
 )
 from cloud_storage_tools.formatting import human_bytes
-from cloud_storage_tools.photosutil import build_photos_service, summarize_photos
+
+INVENTORY_DIR = Path("data/inventory")
 
 
 def _creation_date(iso_ts: str | None) -> _dt.date | None:
     if not iso_ts:
         return None
     return _dt.datetime.fromisoformat(iso_ts).date()
+
+
+def load_photo_inventory(label: str) -> list[dict] | None:
+    """Load data/inventory/<label>_photos.json if it exists, else None."""
+    path = INVENTORY_DIR / f"{label}_photos.json"
+    if not path.exists():
+        return None
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def summarize_photo_inventory(account: Account, items: list[dict]) -> dict:
+    photo_count = sum(1 for i in items if i.get("type") == "PHOTO")
+    video_count = sum(1 for i in items if i.get("type") == "VIDEO")
+    free_count = 0
+    charged_count = 0
+    for item in items:
+        date = _creation_date(item.get("createTime"))
+        if date is not None and account.is_free_photo_date(date):
+            free_count += 1
+        else:
+            charged_count += 1
+    dates = [_creation_date(i.get("createTime")) for i in items]
+    dates = [d for d in dates if d is not None]
+    return {
+        "total": len(items),
+        "photo_count": photo_count,
+        "video_count": video_count,
+        "free_count": free_count,
+        "charged_count": charged_count,
+        "earliest": min(dates) if dates else None,
+        "latest": max(dates) if dates else None,
+    }
 
 
 def report_for_account(config: Config, account: Account) -> dict:
@@ -60,12 +100,11 @@ def report_for_account(config: Config, account: Account) -> dict:
     except HttpError as exc:
         result["drive_error"] = f"Drive API error: {exc}"
 
-    # Photos counts (no size data available via API -- see README).
-    try:
-        photos = build_photos_service(creds)
-        result["photos"] = summarize_photos(photos)
-    except HttpError as exc:
-        result["photos_error"] = f"Photos API error: {exc}"
+    # Photos counts, from local inventory built via scripts/photos_inventory.py
+    # (no live API exists anymore to list a user's whole Photos library).
+    items = load_photo_inventory(account.label)
+    if items is not None:
+        result["photos"] = summarize_photo_inventory(account, items)
 
     return result
 
@@ -132,30 +171,22 @@ def print_report(account: Account, result: dict) -> None:
 
     photos = result.get("photos")
     if photos:
-        print("\n  Google Photos:")
-        print(f"    photos: {photos.photo_count}   videos: {photos.video_count}")
+        print("\n  Google Photos (from local inventory, metadata-only, no size data):")
         print(
-            "    creation date span: "
-            f"{photos.earliest_creation_time or '-'} .. {photos.latest_creation_time or '-'}"
+            f"    total: {photos['total']}   photos: {photos['photo_count']}   "
+            f"videos: {photos['video_count']}"
         )
-        earliest = _creation_date(photos.earliest_creation_time)
-        latest = _creation_date(photos.latest_creation_time)
+        print(f"    creation date span: {photos['earliest'] or '-'} .. {photos['latest'] or '-'}")
+        print(f"    free (per configured free_photo_ranges): {photos['free_count']}")
+        print(f"    charged (counts against quota): {photos['charged_count']}")
         if account.free_photo_ranges:
             print("    configured free date ranges:")
             for r in account.free_photo_ranges:
-                inside = ""
-                if earliest and r.contains(earliest):
-                    inside = " (library start falls inside this free range)"
-                print(f"      {r.start} .. {r.end}{inside}")
-        if latest and account.free_photo_ranges and not any(
-            r.contains(latest) for r in account.free_photo_ranges
-        ):
-            print(
-                "    \u26a0 most recent photo is OUTSIDE the configured free ranges -- "
-                "these newer photos are counting against quota"
-            )
-    elif "photos_error" in result:
-        print(f"\n  ! {result['photos_error']}")
+                print(f"      {r.start} .. {r.end}")
+        else:
+            print("    (no free_photo_ranges configured -- all items counted as charged)")
+    else:
+        print("\n  Google Photos: no local inventory found -- run scripts/photos_inventory.py")
 
 
 def main() -> int:

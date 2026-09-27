@@ -21,9 +21,14 @@ from cloud_storage_tools.config import Account, Config
 # Deliberately does NOT request write/delete scopes yet -- those will be
 # added explicitly for the future move/quarantine scripts, gated behind
 # a re-authorization and explicit user confirmation.
+#
+# Note: Photos access is handled separately via the Picker API (see
+# scripts/photos_inventory.py), which uses its own
+# photospicker.mediaitems.readonly scope requested per-session -- the old
+# bulk photoslibrary.readonly scope was removed by Google in March 2025 and
+# is intentionally not requested here.
 READONLY_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/photoslibrary.readonly",
 ]
 
 
