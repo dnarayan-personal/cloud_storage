@@ -143,13 +143,15 @@ scripts/
   usage_report.py         # cross-account usage report (read-only)
   photos_inventory.py     # year-by-year Google Photos inventory via the Picker API
                            # (metadata only; requires a browser per year -- see below)
+  ytmusic_inventory.py    # YT Music uploaded-songs inventory via ytmusicapi
+                           # (one call; requires a one-time browser-auth file -- see below)
 src/cloud_storage_tools/
   config.py               # accounts.yaml loading/validation
   auth.py                 # per-account OAuth credential management
   driveutil.py            # Drive quota + file inventory helpers
   formatting.py           # human-readable byte formatting
 tokens/                   # per-account cached OAuth tokens (gitignored)
-data/inventory/            # per-account Photos inventory JSON (gitignored)
+data/inventory/            # per-account Photos/YT Music inventory JSON (gitignored)
 ```
 
 ### Google Photos inventory (Picker API)
@@ -169,3 +171,21 @@ that year, range-select the results, and click Done; the script then shows
 you a count and date range to sanity-check before saving. Progress is saved
 incrementally to `data/inventory/<label>_photos.json` (deduped by item ID),
 so it's safe to stop and resume later with `--start-year`.
+
+### YT Music uploaded-songs inventory
+
+There is no official Google/YouTube Music API. This uses the unofficial
+[ytmusicapi](https://ytmusicapi.readthedocs.io/) library, authenticated by
+reusing your logged-in browser session's request headers (not OAuth) --
+follow the ["Browser authentication"
+guide](https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html) to
+copy an authenticated `browse` request's headers from your browser's dev
+tools, and save them as `tokens/<label>_ytmusic.json`. Treat that file like
+a password (it contains a session cookie) -- `tokens/` is gitignored, and
+per Google's docs these credentials stay valid for about 2 years unless you
+log out.
+
+`scripts/ytmusic_inventory.py <label>` then fetches your full "uploaded
+songs" library (title, artists, album, like status -- no file size) in one
+call and saves it to `data/inventory/<label>_ytmusic.json`. Unlike Photos,
+no manual per-year picking is needed here.
