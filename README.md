@@ -159,10 +159,20 @@ scripts/
                            # (metadata only; requires a browser per year -- see below)
   ytmusic_inventory.py    # YT Music uploaded-songs inventory via ytmusicapi
                            # (one call; requires a one-time browser-auth file -- see below)
+  drive_audio_inventory.py # Drive audio-file inventory via folder-path parsing
+                           # (Music/Artist/Album/TrackName convention; no downloads)
+  drive_audio_id3.py      # Drive audio-file inventory via real ID3/metadata tags
+                           # (range-downloads + full-download fallback; threaded)
+  match_drive_ytmusic.py  # matches a Drive audio inventory against a YT Music
+                           # inventory (folder- or ID3-based; precision-first, see below)
+  sample_id3_check.py     # spot-checks ID3 tags for a few sampled files per match
+                           # tier against folder-derived metadata and YT Music
 src/cloud_storage_tools/
   config.py               # accounts.yaml loading/validation
   auth.py                 # per-account OAuth credential management
-  driveutil.py            # Drive quota + file inventory helpers
+  driveutil.py            # Drive quota + file inventory + download helpers
+  matching.py             # shared artist/title normalization + matching logic
+                           # used by match_drive_ytmusic.py
   formatting.py           # human-readable byte formatting
 tokens/                   # per-account cached OAuth tokens (gitignored)
 data/inventory/            # per-account Photos/YT Music inventory JSON (gitignored)
@@ -203,3 +213,56 @@ log out.
 songs" library (title, artists, album, like status -- no file size) in one
 call and saves it to `data/inventory/<label>_ytmusic.json`. Unlike Photos,
 no manual per-year picking is needed here.
+
+### Drive audio vs. YT Music matching
+
+This finds Drive audio files that are likely already backed up in a YT
+Music uploaded-songs library, as a first step toward safely freeing up
+Drive quota. **Precision over recall throughout**: a false positive here
+risks permanently losing music that isn't actually duplicated anywhere
+else, so every step is designed to fail toward "needs a human to look at
+it" rather than guessing. See `scripts/match_drive_ytmusic.py`'s docstring
+for the full rationale and tier definitions (`high_confidence` /
+`needs_review` / `no_match`).
+
+There are two ways to get Drive-side artist/track metadata (the Drive API
+itself does not expose ID3 tags -- only filesystem metadata):
+
+1. **Folder-path parsing** (`scripts/drive_audio_inventory.py <label>`,
+   fast, no downloads): assumes the `Music/Artist/Album/TrackName.ext`
+   folder convention, tolerating multi-disc (`CD1`/`Disc 2`) and extra
+   grouping folders. The raw Drive folder/file listing is fetched once and
+   cached to `data/inventory/<label>_drive_audio_raw.json` (pass
+   `--refresh` to re-fetch after adding/moving files in Drive); the parsed
+   result is saved to `data/inventory/<label>_drive_audio.json`. This is
+   metadata-only and can mis-parse when folder names are truncated or
+   contain filesystem-illegal characters swapped for underscores.
+2. **Real ID3/metadata tags** (`scripts/drive_audio_id3.py <label>`, more
+   accurate, does light downloading): reads each file's actual embedded
+   tags. To minimize data transferred, most files are read via small HTTP
+   Range requests rather than full downloads (256KB for most files; MP3
+   files first try to read just the declared ID3v2 tag size), falling back
+   to a full download only if that doesn't parse. Runs a thread pool (this
+   is network-I/O-bound, not CPU-bound, so threads -- not
+   multiprocessing -- are the right tool: the GIL is released while
+   blocked on HTTP calls) with retry/backoff on transient Drive API errors.
+   Saves to `data/inventory/<label>_drive_audio_id3.json`.
+
+Both are a **one-time metadata pull, not a cache** -- once fetched, all
+match-rule iteration happens locally against the saved JSON with no further
+Drive API calls, until you explicitly ask to re-pull.
+
+`scripts/match_drive_ytmusic.py <label> --source folder|id3` then matches
+one of those inventories against a YT Music inventory and saves the result
+to `data/reports/<label>_vs_<ytmusic_label>_ytmusic_match.json`. In
+practice, ID3-based matching finds meaningfully more `high_confidence`
+matches than folder-path matching, since Drive folder names get truncated
+for long artist names and filesystem-illegal characters (`?`, `/`, `:`) get
+replaced with `_` in filenames -- both of which real ID3 tags don't suffer
+from.
+
+`scripts/sample_id3_check.py <label>` is a smaller spot-check tool: it
+samples a few files per match tier from an existing match report,
+downloads just those, and prints their real ID3 tags next to the
+folder-derived metadata and YT Music candidate, to sanity-check either
+approach without doing a full ID3 pull.

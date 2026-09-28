@@ -12,8 +12,10 @@ dependencies = [
     "google-auth-httplib2>=0.4.2",
     "google-auth-oauthlib>=1.4.1",
     "matplotlib>=3.11.2",
+    "mutagen>=1.48.1",
     "pyyaml>=6.0.3",
     "tabulate>=0.10.0",
+    "tqdm>=4.70.1",
     "ytmusicapi>=1.12.3",
 ]
 
